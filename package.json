@@ -1,0 +1,21 @@
+{
+  "name": "negev-chan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Negev-chan - a private Telegram AI girlfriend bot (DeepSeek V4 Flash, local media pipeline for video/audio).",
+  "type": "module",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "check": "node --check bot.js && node --check config.js && node --check util.js && node --check persona.js && node --check deepseek.js && node --check memory.js && node --check media.js && node --check links.js && node --check proactive.js && node --check signal.js && node --check bond.js && node --check reactions.js && node --check voice.js && node --check photos.js && node --check data-science.js && node --check grader.js && node --check settings.js && node --check panel.js && node --check bot-internals.js && node --check selftest.js && node --check usage.js && node --check mood.js && node --check style.js && node --check timing.js && node --check tasks.js && node --check sleep.js && node --check runner.js && node --check lock.js && node --check identity.js && node --check dotenv.js && node --check weather.js",
+    "selftest": "node selftest.js",
+    "grade": "node grader.js",
+    "grade:scenarios": "node grader.js --scenarios",
+    "grade:wobble": "node grader.js --scenarios --repeat=3",
+    "grade:baseline": "node grader.js --scenarios --repeat=3 --save",
+    "gate": "node grader.js --gate"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

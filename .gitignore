@@ -1,0 +1,24 @@
+# secrets + private state - never commit
+config.js
+.env
+.env.*
+*.env
+data/
+roadmaps/
+*.log
+
+# the playground's own memory, logs and copied code - never commit
+playground/data/
+playground/out/
+playground/run/
+
+# node
+node_modules/
+
+# workspace tooling
+.freebuff/
+
+# os junk
+.DS_Store
+Thumbs.db
+desktop.ini

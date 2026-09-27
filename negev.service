@@ -1,0 +1,30 @@
+# Negev-chan as a systemd service (24/7 on a small Linux VPS).
+#
+# 1. copy this folder to /opt/negev  (so config.js and data/ come along)
+# 2. edit User= below to your user
+# 3. sudo cp negev.service /etc/systemd/system/
+# 4. sudo systemctl daemon-reload && sudo systemctl enable --now negev
+# 5. watch her: journalctl -u negev -f
+#
+# NOTE: the local whisper/Tesseract pipeline is a Windows install. On a VPS the
+# bot still handles text, photos (DeepSeek vision) and links; videos degrade to
+# still frames unless you set up the pipeline there too.
+
+[Unit]
+Description=Negev-chan Telegram companion bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/negev
+ExecStart=/usr/bin/node /opt/negev/bot.js
+Restart=always
+RestartSec=5
+# keep her memory writable and nothing else
+ReadWritePaths=/opt/negev/data
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

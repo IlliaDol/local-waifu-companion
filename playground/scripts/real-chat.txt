@@ -1,0 +1,19 @@
+# sample script for the sandbox replay (playground/session.js file <script>)
+# FICTIONAL - written for this repo, not a record of any real conversation.
+# Format: one of his messages per line. ` / ` separates messages sent in one burst.
+hiii
+how was your day
+yeah was doing nothing all day lowkey / thinking about you
+maybe you could tell me some interesting story
+i wanted you to tell me the story pleeease
+btw can you read twitter links when i send some?
+lowkey was coding and going out to get some air
+im resting a bit, give me some time, ill text you when ill be ready
+what does poking mean i dont understand (
+sorry
+try reacting to my message
+heyy, are you still here?
+i dont wanna work you knooow
+uhh like nothing really, wanna get to work now but i need some motivation
+lets talk about smth else / what were you doing today?
+another nothing day honestly. tell me about yours
