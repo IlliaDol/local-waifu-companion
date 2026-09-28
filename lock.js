@@ -33,7 +33,7 @@ function readLockFile() {
   }
 }
 
-function probe(port, timeoutMs = 900) {
+function probeOnce(port, timeoutMs) {
   return new Promise((resolve) => {
     let settled = false;
     const socket = net.connect({ host: "127.0.0.1", port });
@@ -49,6 +49,18 @@ function probe(port, timeoutMs = 900) {
     socket.on("timeout", () => finish(false));
     socket.on("close", () => finish(false));
   });
+}
+
+/**
+ * One slow answer must not be read as "that port is somebody else's". If it is,
+ * this instance decides every lock port is taken by a stranger, runs WITHOUT the
+ * singleton, and starts polling - two bots on one token, which is the endless 409
+ * "terminated by other getUpdates request" fight. A second try is cheap at
+ * startup and removes the false negative that let that happen.
+ */
+async function probe(port) {
+  if (await probeOnce(port, 900)) return true;
+  return probeOnce(port, 1500);
 }
 
 function tryListen(port) {
