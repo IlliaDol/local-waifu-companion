@@ -466,7 +466,15 @@ export function startPanel() {
       json(res, 500, { error: err.message });
     }
   });
-  server.listen(PORT, "127.0.0.1", () => {
+  // A taken port must never take her down with it. Another copy of her, or any
+  // other app already on 8765, used to raise an uncaught EADDRINUSE and kill the
+  // whole process - which is exactly what a preview run against a live instance did.
+  const srv = server;
+  srv.on("error", (err) => {
+    logErr(`[panel] cannot listen on 127.0.0.1:${PORT} (${err.code || err.message}) - the panel stays off, she carries on`);
+    if (server === srv) server = null;
+  });
+  srv.listen(PORT, "127.0.0.1", () => {
     log(`[panel] control panel live at http://127.0.0.1:${PORT} (localhost only)`);
   });
 }

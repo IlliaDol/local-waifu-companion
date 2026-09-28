@@ -715,7 +715,10 @@ data/her-photos/    pictures of her life, if you gave her any (see above)
 * Web reading is bounded at 8 logical reads per day, 3 per hour, and one read
   every 30 seconds. `/web` shows the current budget.
 * Diary = 1 small call a day. Fact extraction every ~10 messages. Proactive
-  texts are capped at 100 tokens and every call has a 320-token hard ceiling.
+  texts are capped at 100 tokens and every call has a 760-token hard ceiling.
+  The single exception that ever asks for more than a normal reply is a
+  data-science answer, which is the one prompt allowed to be long enough to
+  actually teach something (`teachingMaxTokens`).
 * While she is "busy" she makes **zero** model calls.
 * Reading him, the register, the dryness, his questions, his hours, the day cards
   and the whole relationship ledger are local logic — **no model calls at all**.
@@ -930,7 +933,8 @@ it does not prove the real endpoint accepts it.
 | `TIMING_DEFAULTS` in `timing.js` | her reaction odds and wait windows; a `human: { ... }` block in `config.js` overrides any of them |
 | `pipeline.*` | the optional local whisper pipeline (dir, model, langs, timeout) |
 | `schedule.slotsMin/Max` | how chatty she is per day (default 6-9) |
-| `replyMaxTokens` | 280 keeps replies short and cheap; every call is capped at 320 |
+| `replyMaxTokens` | 280 keeps replies short and cheap; every call is capped at `maxOutputTokens` (760) |
+| `teachingMaxTokens` | the only prompt allowed to be long: a real data-science answer (700) |
 | `thinking.type` | permanently `disabled`; there is no enable switch |
 | `model` | `deepseek-v4-flash` for every call; model overrides are blocked |
 | `photos.dir` | where her own pictures live (default `data/her-photos`) |

@@ -16,7 +16,10 @@ export function ensureWindow(state, { t = nowBerlin(), mood = null, random = Mat
   if (forced === "asleep" || forced === "bedtime" || forced === "justup") {
     const bedMin = wrap(forced === "asleep" ? t.minutes - 120 : forced === "justup" ? t.minutes - 8 * 60 : t.minutes + 2);
     const wakeMin = wrap(forced === "asleep" ? t.minutes + 5 : forced === "justup" ? t.minutes - 12 : t.minutes + 9 * 60);
-    state.sleep = { date: t.dateStr, bedMin, wakeMin, hours: 7, why: `forced for a test (${forced})` };
+    // Spread the existing object: the forced window is re-asserted on every tick,
+    // and rebuilding it from scratch used to wipe the flags that live on it - a
+    // forced bedtime therefore said goodnight again on the next tick.
+    state.sleep = { ...(state.sleep || {}), date: t.dateStr, bedMin, wakeMin, hours: 7, why: `forced for a test (${forced})` };
     return state.sleep;
   }
   const fixed = state.sleep?.date === t.dateStr

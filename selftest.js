@@ -21,8 +21,8 @@ import "./dotenv.js"; // .env secrets first, before anything reads process.env
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { spawn, execFileSync } from "node:child_process";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { CONFIG, PATHS } from "./config.js";
 import { llm, currentModel, tidyReply } from "./deepseek.js";
 import * as media from "./media.js";
@@ -2302,6 +2302,48 @@ function testSignal() {
   chatMode.topic === "general" && chatMode.webAllowed === true
     ? ok("ordinary topicMode stays web-allowed")
     : bad("ordinary topicMode was wrongly blocked", JSON.stringify(chatMode));
+  // a student asking about his course is a senpai question even without a library name
+  read("my course is killing me this semester").dataScience && read("i have an assignment due friday").dataScience
+    ? ok("and ordinary study talk counts as her topic, not only library names")
+    : bad("study talk was not recognized as data science");
+
+  // The knowledge layer is the part that fails SILENTLY: with an empty roadmaps/
+  // folder every block resolves to an empty string, so the feature looks wired up
+  // while it teaches nothing at all - which is exactly what had happened. So the
+  // real module is loaded in a child process against a fixture folder and asked
+  // for output, rather than trusting the wiring by eye.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const dsDir = fs.mkdtempSync(path.join(os.tmpdir(), "negev-ds-"));
+  fs.writeFileSync(path.join(dsDir, "data-science-roadmap-all-topics.md"), [
+    "# fixture roadmap",
+    "## SQL window functions",
+    "PARTITION BY groups rows, ORDER BY sequences them, and the frame decides the window. ROW_NUMBER gives a deterministic rank and RANK ties with gaps.",
+    "## Overfitting and validation",
+    "Overfitting shows up as a validation curve turning up while training loss keeps falling. Underfitting is both curves high and flat.",
+  ].join("\n"), "utf8");
+  const probe = path.join(dsDir, "probe.mjs");
+  fs.writeFileSync(probe, [
+    `import * as roadmap from ${JSON.stringify(pathToFileURL(path.join(here, "data-science.js")).href)};`,
+    `const ctx = roadmap.contextFor("how do i use window functions", { maxChars: 4200, limit: 4, rotate: true });`,
+    `console.log(JSON.stringify({ chunks: roadmap.status().chunks, ctx: ctx.length, known: ctx.includes("SQL window functions"), cue: roadmap.proactiveCue().length }));`,
+  ].join("\n"), "utf8");
+  let dsOut = "";
+  try {
+    dsOut = execFileSync(process.execPath, [probe], {
+      env: { ...process.env, NEGEV_DS_ROADMAP_DIR: dsDir },
+      cwd: here,
+      encoding: "utf8",
+    });
+  } catch (err) {
+    dsOut = String((err && (err.stdout || err.message)) || "");
+  }
+  const dsProbe = (() => {
+    try { return JSON.parse(dsOut.trim().split("\n").pop()); } catch { return null; }
+  })();
+  dsProbe && dsProbe.chunks >= 2 && dsProbe.ctx > 0 && dsProbe.known && dsProbe.cue > 0
+    ? ok("with roadmap files present the notes really reach her prompt", `${dsProbe.chunks} chunks, ${dsProbe.ctx} chars of context, cue ${dsProbe.cue}`)
+    : bad("the roadmap knowledge layer produced nothing", dsOut.slice(0, 200));
+  fs.rmSync(dsDir, { recursive: true, force: true });
 }
 
 // ------------------------------------------------------------- fixed biography

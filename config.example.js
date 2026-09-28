@@ -25,7 +25,8 @@ export const CONFIG = {
 
   // ---- reply shape ----------------------------------------------------------
   replyMaxTokens: 280, // keeps replies short and cheap
-  maxOutputTokens: 320, // hard ceiling for any call
+  maxOutputTokens: 760, // hard ceiling for any call
+  teachingMaxTokens: 700, // the data-science answer is the one prompt allowed to be long
   proactiveMaxTokens: 100, // her own spontaneous texts are one-liners
   imageDetail: "low", // vision: cheap, enough for "what is in this photo"
   visionMaxImages: 2, // max photos/frames sent to the model per message

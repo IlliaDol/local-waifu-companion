@@ -714,7 +714,13 @@ async function processBatch(msgs, plan = null) {
 
   log(`[mood] ${state.def.label} | energy ${energy.key} | ${style.describe(dress)} | bubbles<=${state.def.bubbles} | words<=${state.def.words}${typo ? " | typo allowed" : ""}${followUp ? "" : " | no question back"}`);
 
-  const maxTokens = mood.tokenBudget(state, settings.replyMaxTokens(CONFIG.replyMaxTokens));
+  const baseTokens = mood.tokenBudget(state, settings.replyMaxTokens(CONFIG.replyMaxTokens));
+  // A data-science answer squeezed into 25 words per bubble cannot teach anything,
+  // so this is the one topic where she is allowed a real answer. The request is
+  // raised knowing the client clamps every call to CONFIG.maxOutputTokens.
+  const maxTokens = topicMode.topic === "data_science"
+    ? Math.max(baseTokens, Number(CONFIG.teachingMaxTokens || baseTokens))
+    : baseTokens;
   const temperature = Math.max(0.2, Math.min(1.4, mood.temperature(state) + settings.get().temperatureBias));
 
   const ask = (correction = null) => llm(
@@ -2113,7 +2119,10 @@ async function main() {
   // her spontaneous texts carry their own usage bucket, so !token works on them
   // too - and they get the same imperfect typing as her replies
   startProactive((text, opts = {}) => {
-    const dress = style.plan(mood.currentMood(mem.state));
+    // Same dressing as a reply: the panel's affection dial and how long the two of
+    // them have been together both bend her marks, and this path used to skip both -
+    // so a spontaneous text was where the affection went to die.
+    const dress = style.plan(settings.dressedMood(mood.currentMood(mem.state)), { closeness: bond.closeness(mem.state) });
     const shaped = style.prepare(text, dress);
     return sendBubbles(shaped, { chatId: mem.state.ownerId, ...opts });
   });

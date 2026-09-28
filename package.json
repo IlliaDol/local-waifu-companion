@@ -2,7 +2,7 @@
   "name": "negev-chan",
   "version": "1.0.0",
   "private": true,
-  "description": "Negev-chan - a private Telegram AI girlfriend bot (DeepSeek V4 Flash, local media pipeline for video/audio).",
+  "description": "Negev-chan - a self-hosted Telegram AI companion (DeepSeek V4 Flash, local media pipeline for video/audio).",
   "type": "module",
   "main": "bot.js",
   "scripts": {

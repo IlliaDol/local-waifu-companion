@@ -111,14 +111,56 @@ if command -v nohup >/dev/null 2>&1; then
 else
   ./start.sh &
 fi
-sleep 5
+
+# Starting is not the same as running: a key missing from .env, or a second copy
+# on the same token, makes her exit within seconds. So wait until she actually
+# answers before telling the user she is up.
+negev_alive() {
+  local p line
+  # the singleton port she binds - works even with the control panel switched off
+  for p in 47631 47632 47633; do
+    if exec 3<>"/dev/tcp/127.0.0.1/$p" 2>/dev/null; then
+      if IFS= read -r -t 1 line <&3 && [[ "$line" == *NEGEV-CHAN* ]]; then
+        exec 3<&- 3>&-
+        return 0
+      fi
+      exec 3<&- 3>&-
+    fi
+  done
+  # and the panel, when it is on and curl is available
+  local port="${NEGEV_PANEL_PORT:-8765}"
+  if [ "$port" != "0" ] && command -v curl >/dev/null 2>&1; then
+    curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:${port}/" 2>/dev/null && return 0
+  fi
+  return 1
+}
+
+UP=""
+i=0
+while [ "$i" -lt 20 ]; do
+  if negev_alive; then UP="yes"; break; fi
+  sleep 1
+  i=$((i + 1))
+done
+
 if [ -f data/negev.log ]; then
   gray "       last log lines:"
   tail -5 data/negev.log | while IFS= read -r line; do gray "       $line"; done
 fi
 echo ""
-green "  She is running and the control panel is at http://127.0.0.1:8765"
-green "  (start her any time with ./start.sh - the panel comes up with her)"
-echo ""
-gray "  Stop her:  pkill -f 'node bot.js'   |   24/7 on a VPS: see negev.service"
+
+if [ "$UP" = "yes" ]; then
+  green "  She is running and the control panel is at http://127.0.0.1:${NEGEV_PANEL_PORT:-8765}"
+  green "  (start her any time with ./start.sh - the panel comes up with her)"
+  echo ""
+  gray "  Stop her:  pkill -f 'node bot.js'   |   24/7 on a VPS: see negev.service"
+else
+  yellow "  She did not answer - she is probably not running yet."
+  yellow "  Usual causes: a key missing from .env, or another copy already running"
+  gray   "  (two instances on one token fight over the same updates)."
+  echo ""
+  gray "  Check : the two keys in .env are filled in"
+  gray "  Start : ./start.sh   (run it in the foreground and watch her)"
+  gray "  Log   : data/negev.log"
+fi
 echo ""

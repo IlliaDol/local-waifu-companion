@@ -1,6 +1,7 @@
 // Her own life: a diary generated once a day, spontaneous texts spread over the
 // day, "busy" windows, and one dramatic double text when you ignore her.
 import { CONFIG } from "./config.js";
+import * as settings from "./settings.js";
 import * as mem from "./memory.js";
 import { llm, tidyReply } from "./deepseek.js";
 import {
@@ -115,13 +116,20 @@ async function sendPhotoText(photo, moment, m, { replyTo = null } = {}) {
 async function sendSpontaneous(prompt, m, { replyTo = null, kind = "proactive" } = {}) {
   const echo = echoBlock();
   const usageKey = usage.begin({ kind });
+  // Her first texts are dressed exactly like her replies. This path used to roll
+  // the marks with closeness 0 and no affection dial, and it never announced the
+  // rolled mark in the prompt at all - which made a spontaneous text the one kind
+  // of message that practically never carried a <3, exactly the affection he was
+  // not seeing.
+  const dress = style.plan(m, { closeness: bond.closeness(mem.state) });
+  const dressBlock = mood.block(m, { level: dress.level, smile: dress, heart: dress, face: dress, state: mem.state });
   try {
     let out = null;
     // one reroll if the first attempt echoes herself
     for (let attempt = 0; attempt < 2; attempt += 1) {
       out = await llm(
         [
-          { role: "system", content: `${SYSTEM_BASE}\n\n${contextBlock(mem.state)}\n\n${mood.block(m)}\n\n${echo}\n\n${signal.topicMode(prompt).topic === "data_science" ? `${DS_MENTOR_BLOCK}\n\n${roadmap.contextFor(prompt, { maxChars: 2200, limit: 2, rotate: true })}` : ""}` },
+          { role: "system", content: `${SYSTEM_BASE}\n\n${contextBlock(mem.state)}\n\n${dressBlock}\n\n${echo}\n\n${signal.topicMode(prompt).topic === "data_science" ? `${DS_MENTOR_BLOCK}\n\n${roadmap.contextFor(prompt, { maxChars: 2200, limit: 2, rotate: true })}` : ""}` },
           { role: "user", content: prompt },
         ],
         { maxTokens: mood.tokenBudget(m, CONFIG.proactiveMaxTokens), temperature: mood.temperature(m) },
@@ -251,8 +259,13 @@ function parseDiary(out, date) {
  * Exported for the self-test, which checks that no slot ever falls in her night.
  */
 export function makeSchedule(sched, t = nowBerlin(), { state = mem.state, random = Math.random } = {}) {
-  const { slotsMin, slotsMax, minGapMin } = CONFIG.schedule;
-  const target = rand(slotsMin, slotsMax);
+  const { minGapMin } = CONFIG.schedule;
+  // The panel's "spontaneous texts per day" slider was display-only: nothing read
+  // it back, so moving it changed nothing at all. It now overrides the defaults.
+  const dial = settings.get().proactive || {};
+  const slotsMin = Number(dial.min ?? CONFIG.schedule.slotsMin);
+  const slotsMax = Number(dial.max ?? CONFIG.schedule.slotsMax);
+  const target = rand(slotsMin, Math.max(slotsMin, slotsMax));
   const from = sched ? sched.wakeMin + 45 : CONFIG.schedule.wakeHour * 60 + 30;
   // A 02:00 bedtime crosses midnight. This day's schedule is generated after
   // 08:00, so keep its slots in today's 08:45-23:15 waking range; the next
@@ -329,6 +342,11 @@ async function ensureDiary(t) {
   st.diary = diary;
   st.schedule = makeSchedule(night(), t);
   rollStorylines(t);
+  // The unanswered-text cap used to clear only when HE wrote something, so a single
+  // silent stretch muted her until he spoke first - on a quiet week she stopped
+  // starting conversations entirely, which is the "she texts me too little" bug.
+  // A new day is a new day: she gets her voice back every morning.
+  mem.resetInitiations();
   mem.save();
   log(`[diary] ${t.dateStr}: ${diary.events.length} events | ${diary.busy.length} busy window(s) | ${st.schedule.length} planned texts${wEvent ? ` | weather: ${wEvent}` : ""}`);
 }
@@ -541,18 +559,30 @@ async function scheduledTexts(t) {
   for (const slot of st.schedule) {
     if (slot.sent || t.minutes < slot.t) continue;
     const sentBefore = st.schedule.filter((s) => s.sent).length;
-    slot.sent = true;
-    mem.save();
 
-    const stale = t.minutes - slot.t > 150; // machine was off, do not dump old texts
-    if (stale) continue;
+    // The machine was off too long: a text from hours ago arriving now reads as
+    // broken, so this one slot is retired without sending.
+    if (t.minutes - slot.t > 150) {
+      slot.sent = true;
+      mem.save();
+      continue;
+    }
+
+    // Everything below leaves the slot UNSENT, so a later tick can still use it.
+    // Marking it sent up here used to burn it - he was active for twelve minutes,
+    // or she was inside a busy window, and that text was gone for the rest of the
+    // day. That is most of the reason a day delivered three texts instead of eight.
     const held = blockedFromInitiating();
     if (held) {
-      log(`[proactive] slot skipped - ${held}`);
+      log(`[proactive] slot held - ${held}`);
       continue;
     }
     if (Date.now() - st.lastUserTs < CONFIG.schedule.userActiveWindowMin * 60000) continue;
     if (currentWindow(t)) continue;
+
+    // Committed: this slot is spent now, whatever the send itself does.
+    slot.sent = true;
+    mem.save();
 
     // Her mood changes the wording and energy, not whether she disappears for
     // the rest of the day. The explicit quiet/hold/unanswered gates above are
@@ -579,7 +609,11 @@ async function scheduledTexts(t) {
       // the reason she picks the phone up - anything but the same script again
       let extra = "";
       if (kind !== "morning" && kind !== "goodnight") {
-        if (Math.random() < Number(CONFIG.dataScience?.proactiveShare ?? 0.45)) {
+        // Parenthesised on purpose: `Math.random() < x ?? 0.45` binds as
+        // `(Math.random() < x) ?? 0.45`, and a comparison is never null, so the
+        // fallback was dead code and an unset share silenced this branch entirely.
+        const dsShare = Number(CONFIG.dataScience?.proactiveShare ?? 0.45);
+        if (Math.random() < dsShare) {
           extra = roadmap.proactiveCue();
         } else {
           const story = storylineMoment(st);
@@ -648,12 +682,23 @@ async function bedtimeText(t) {
   const sched = night();
   if (!sched || st.sleep?.goodnightOn === t.dateStr) return;
   const mins = sleep.minutesUntilBed(sched, t);
-  if (mins > 4) return;
-  st.sleep.goodnightOn = t.dateStr;
-  mem.save();
+  // Ten minutes of runway, not four: the tick runs every 45 s, so a restart or a
+  // slow tick inside the old four-minute slot swallowed the whole goodnight.
+  if (mins > 10) return;
+  // An explicit "leave me alone" is the one thing a goodnight does not talk over.
+  if (mem.quiet()) return;
+  const since = Date.now() - (st.lastUserTs || 0);
+  if (since > 300 * 60000) {
+    // Announcing bedtime to a man silent since the afternoon is odd. Say it in the
+    // log, though: a silent skip is exactly how a missing goodnight becomes
+    // invisible, which is how this one went missing in the first place.
+    log(`[proactive] no goodnight tonight - he has been quiet for ${Math.round(since / 60000)} min`);
+    return;
+  }
   if (currentWindow(t)) return;
-  if (Date.now() - (st.lastUserTs || 0) > 90 * 60000) return;
-  if (blockedFromInitiating()) return; // a goodnight is still an initiation
+  // A goodnight is the one initiation that is not nagging, so it is allowed past
+  // the unanswered-text cap: after four ignored texts she goes quiet, and the
+  // night still ends with a line from her.
 
   const m = herMood();
   // going to bed annoyed is what makes a fight last until morning
@@ -665,6 +710,11 @@ async function bedtimeText(t) {
   log(`[proactive] bedtime - one last line before she is gone for the night`);
   try {
     await sendSpontaneous(proactivePrompt("goodnight", null, context), m, { kind: "proactive-goodnight" });
+    // Only a goodnight that actually went out spends the night. This used to be
+    // written before the gates above, so one skipped attempt cancelled the whole
+    // night with nothing sent and nothing logged.
+    st.sleep.goodnightOn = t.dateStr;
+    mem.save();
   } catch (err) {
     logErr("[proactive] bedtime text failed:", err.message);
   }
