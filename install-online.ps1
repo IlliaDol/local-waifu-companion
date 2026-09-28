@@ -163,19 +163,46 @@ function Test-Negev {
 
 if (-not $NoStart) {
   Write-Host " [5/5] Starting her..."
-  Start-Process -FilePath "cmd.exe" -ArgumentList "/c \"\"$(Join-Path $dir 'negev.cmd')\"\"" -WorkingDirectory $dir -WindowStyle Hidden
 
+  # The verdict must come from THIS copy's own log, never from the ports alone:
+  # another Negev already on this machine answers them too (and negev.cmd will
+  # not even start this copy when the panel is taken), so a fresh install that
+  # exits would otherwise be reported as running. Everything this copy logs
+  # after we launch it lands past this mark.
+  $log = Join-Path $dir "data\negev.log"
+  $mark = 0
+  if (Test-Path $log) {
+    $mark = (Get-Content $log | Measure-Object -Line).Lines
+    if ($null -eq $mark) { $mark = 0 }
+  }
+  $wasUp = Test-Negev
+
+  # WorkingDirectory is already $dir; the explicit .\ is not decoration -
+  # a bare negev.cmd is not always found from the current directory.
+  Start-Process -FilePath "cmd.exe" -ArgumentList "/c .\negev.cmd" -WorkingDirectory $dir -WindowStyle Hidden
+
+  $fresh = @()
   $up = $false
+  $why = ""
   for ($i = 0; $i -lt 20; $i++) {
     Start-Sleep -Seconds 1
-    if (Test-Negev) { $up = $true; break }
+    $fresh = @(if (Test-Path $log) { Get-Content $log | Select-Object -Skip $mark } else { @() })
+    # a logged-in line from THIS dir wins: a stray restart of an older attempt
+    # can append a lock-exit after it, and that must not flip a healthy verdict
+    if ($fresh -match '\[boot\] logged in as' -and (Test-Negev)) { $up = $true; break }
+    if ($fresh -match 'another Negev is alive') { $why = "other"; break }
+    if ($fresh -match '\[boot\] cannot reach Telegram') { $why = "keys"; break }
   }
+  # nothing new in our own log, yet something is answering: not ours
+  if (-not $up -and -not $why -and $wasUp) { $why = "other" }
 
-  $log = Join-Path $dir "data\negev.log"
   if (Test-Path $log) {
-    Write-Host ""
-    Write-Host "       last log lines:" -ForegroundColor DarkGray
-    Get-Content $log -Tail 5 | ForEach-Object { Write-Host "       $_" -ForegroundColor DarkGray }
+    $fresh = @(Get-Content $log | Select-Object -Skip $mark)
+    if ($fresh.Count) {
+      Write-Host ""
+      Write-Host "       what she logged:" -ForegroundColor DarkGray
+      $fresh | Select-Object -Last 5 | ForEach-Object { Write-Host "       $_" -ForegroundColor DarkGray }
+    }
   }
   Write-Host ""
   if ($up) {
@@ -189,6 +216,19 @@ if (-not $NoStart) {
         & (Join-Path $dir "install-24-7.ps1")
       }
     }
+  } elseif ($why -eq "other") {
+    Write-Host "  Another Negev is already running on this machine, so this copy did not start." -ForegroundColor Yellow
+    Write-Host "  Two copies on one token fight over the same updates - only one can run." -ForegroundColor Yellow
+    Write-Host "" -ForegroundColor DarkGray
+    Write-Host "  Stop the running one : stop-negev.bat" -ForegroundColor DarkGray
+    Write-Host "  Then start THIS copy : negev.cmd" -ForegroundColor DarkGray
+    Write-Host ""
+  } elseif ($why -eq "keys") {
+    Write-Host "  She booted but could not log in to Telegram - the keys are missing or wrong." -ForegroundColor Yellow
+    Write-Host "" -ForegroundColor DarkGray
+    Write-Host "  Put them in .env (DEEPSEEK_API_KEY and NEGEV_BOT_TOKEN), then: negev.cmd" -ForegroundColor DarkGray
+    Write-Host "  Log   : data\negev.log" -ForegroundColor DarkGray
+    Write-Host ""
   } else {
     Write-Host "  She did not answer - she is probably not running yet." -ForegroundColor Yellow
     Write-Host "  Usual causes: a key missing from .env, or another copy already running" -ForegroundColor Yellow

@@ -105,6 +105,16 @@ fi
 
 # ---------------------------------------------------------------- 5. start
 echo " [5/5] Starting her..."
+
+# The verdict must come from THIS copy's own log, never from the ports alone:
+# another Negev already on this machine answers them too, so a fresh install
+# that exits would otherwise be reported as running. Everything this copy logs
+# after we launch it lands past this mark.
+LOG="data/negev.log"
+MARK=0
+if [ -f "$LOG" ]; then MARK="$(wc -l < "$LOG" | tr -d ' ')"; fi
+fresh_lines() { tail -n "+$((MARK + 1))" "$LOG" 2>/dev/null || true; }
+
 if command -v nohup >/dev/null 2>&1; then
   nohup ./start.sh > /dev/null 2>&1 &
   disown || true
@@ -136,16 +146,23 @@ negev_alive() {
 }
 
 UP=""
+WHY=""
 i=0
 while [ "$i" -lt 20 ]; do
-  if negev_alive; then UP="yes"; break; fi
+  fresh="$(fresh_lines)"
+  # a logged-in line from THIS dir wins: a stray restart of an older attempt
+  # can append a lock-exit after it, and that must not flip a healthy verdict
+  if printf '%s\n' "$fresh" | grep -q "\[boot\] logged in as" && negev_alive; then UP="yes"; break; fi
+  if printf '%s\n' "$fresh" | grep -q "another Negev is alive"; then WHY="other"; break; fi
+  if printf '%s\n' "$fresh" | grep -q "\[boot\] cannot reach Telegram"; then WHY="keys"; break; fi
   sleep 1
   i=$((i + 1))
 done
 
-if [ -f data/negev.log ]; then
-  gray "       last log lines:"
-  tail -5 data/negev.log | while IFS= read -r line; do gray "       $line"; done
+fresh="$(fresh_lines)"
+if [ -n "$fresh" ]; then
+  gray "       what she logged:"
+  printf '%s\n' "$fresh" | tail -5 | while IFS= read -r line; do gray "       $line"; done
 fi
 echo ""
 
@@ -154,6 +171,17 @@ if [ "$UP" = "yes" ]; then
   green "  (start her any time with ./start.sh - the panel comes up with her)"
   echo ""
   gray "  Stop her:  pkill -f 'node bot.js'   |   24/7 on a VPS: see negev.service"
+elif [ "$WHY" = "other" ]; then
+  yellow "  Another Negev is already running on this machine, so this copy exited."
+  yellow "  Two copies on one token fight over the same updates - only one can run."
+  echo ""
+  gray "  Stop the running one : stop-negev.bat   (or pkill -f 'node bot.js')"
+  gray "  Then start THIS copy : ./start.sh"
+elif [ "$WHY" = "keys" ]; then
+  yellow "  She booted but could not log in to Telegram - the keys are missing or wrong."
+  echo ""
+  gray "  Put them in .env (DEEPSEEK_API_KEY and NEGEV_BOT_TOKEN), then: ./start.sh"
+  gray "  Log   : data/negev.log"
 else
   yellow "  She did not answer - she is probably not running yet."
   yellow "  Usual causes: a key missing from .env, or another copy already running"
