@@ -1,0 +1,40 @@
+#!/bin/sh
+# prepare-commit-msg — keep commits authored by the human, never by the bot.
+#
+# 1. Strips assistant/bot authorship lines from the message (Claude / Codebuff /
+#    Freebuff / Buffy co-authors and "Generated with ..." lines), whatever the
+#    assistant calls itself after an update.
+# 2. Aborts the commit if the author identity is a bot identity — commits must
+#    come from the human's git user.name / user.email.
+#
+# prepare-commit-msg runs even with `git commit --no-verify`, so this cannot be
+# skipped by accident. This file is committed to the repo on purpose: it is the
+# project's own guard, not a copy inside the assistant app, so assistant app
+# updates cannot take it away. A fallback copy lives in .git/hooks.
+
+msgfile="$1"
+
+if [ -n "$msgfile" ] && [ -f "$msgfile" ]; then
+  cleaned=$(awk '
+    /^[ \t]*[Cc]o-?[Aa]uthored-[Bb]y:.*([Cc]laude|[Cc]odebuff|[Ff]reebuff|[Bb]uffy|anthropic\.com|codebuff\.com)/ { next }
+    /^[^A-Za-z0-9]*[Gg]enerated with ([Cc]laude|[Cc]odebuff|[Ff]reebuff|[Bb]uffy)/ { next }
+    { line[++n] = $0 }
+    END {
+      while (n > 0 && line[n] ~ /^[ \t]*$/) n--
+      for (i = 1; i <= n; i++) print line[i]
+    }
+  ' "$msgfile")
+  printf '%s\n' "$cleaned" > "$msgfile"
+fi
+
+ident=$(git var GIT_AUTHOR_IDENT 2>/dev/null)
+case "$ident" in
+  *[Cc]laude*|*[Cc]odebuff*|*[Ff]reebuff*|*[Bb]uffy*|*anthropic*|*codebuff.com*)
+    echo "prepare-commit-msg: blocked a bot author identity:" >&2
+    echo "  $ident" >&2
+    echo "Commit as yourself instead (git config user.name / user.email, or --reset-author)." >&2
+    exit 1
+    ;;
+esac
+
+exit 0
